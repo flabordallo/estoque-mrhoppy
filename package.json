@@ -1,0 +1,27 @@
+{
+  "name": "estoque-bar-v111",
+  "version": "1.13.2",
+  "private": true,
+  "description": "Estoque do Bar — sistema com banco, auth, auditoria, preços e reset seguro",
+  "scripts": {
+    "migrate": "knex migrate:latest",
+    "migrate:rollback": "knex migrate:rollback --all",
+    "seed": "knex seed:run",
+    "db:reset": "knex migrate:rollback --all && knex migrate:latest && knex seed:run",
+    "test": "vitest run",
+    "build": "echo 'Frontend estático — nenhum build necessário'"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "exceljs": "^4.4.0",
+    "knex": "^3.1.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "better-sqlite3": "^12.2.0",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

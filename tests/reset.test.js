@@ -20,7 +20,7 @@ describe("reset / novo inventário", () => {
     const abertas = (await knex("inventory_counts").whereNull("snapshot_id").count("* as n"))[0].n;
     expect(Number(abertas)).toBe(0);
     const itens = (await knex("inventory_items").count("* as n"))[0].n;
-    expect(Number(itens)).toBe(143);
+    expect(Number(itens)).toBe(144);
     const preco = (await knex("inventory_items").where({ id: item.id }).first()).price;
     expect(Number(preco)).toBe(9.9);
     const snaps = (await knex("inventory_snapshots").count("* as n"))[0].n;

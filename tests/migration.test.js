@@ -43,9 +43,9 @@ describe("migração do catálogo", () => {
     }
   });
 
-  it("migra os 143 itens do catálogo", async () => {
+  it("migra os 144 itens do catálogo", async () => {
     const [{ n }] = await db("inventory_items").count("* as n");
-    expect(Number(n)).toBe(143);
+    expect(Number(n)).toBe(144);
   });
 
   it("preserva as 13 categorias", async () => {
@@ -63,8 +63,8 @@ describe("migração do catálogo", () => {
   });
 
   it("mantém itens sem mínimo como null", async () => {
-    const mozza = await db("inventory_items").where({ name: "Queijo mozzarela" }).first();
-    expect(mozza.minimum).toBeNull();
+    const semMin = await db("inventory_items").where({ name: "Gelo" }).first();
+    expect(semMin.minimum).toBeNull();
   });
 
   it("migra 15 chopps com torneira e reserva", async () => {
@@ -89,7 +89,7 @@ describe("migração do catálogo", () => {
     await db.seed.run();
     const [{ n }] = await db("inventory_items").count("* as n");
     const [{ p }] = await db("chopp_products").count("* as p");
-    expect(Number(n)).toBe(143);
+    expect(Number(n)).toBe(144);
     expect(Number(p)).toBe(15);
   });
 });

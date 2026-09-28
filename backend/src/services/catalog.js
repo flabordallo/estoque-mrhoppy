@@ -17,8 +17,13 @@ const items = {
       category,
       name,
       unit: str(data.unit).trim() || "unidade",
+      base_unit: str(data.baseUnit ?? data.base_unit).trim() || str(data.unit).trim() || "unidade",
       minimum: num(data.minimum),
       price: num(data.price),
+      purchase_price: num(data.purchasePrice ?? data.purchase_price),
+      utility_price: num(data.utilityPrice ?? data.utility_price),
+      conversions: normalizeConversions(data.conversions),
+      units_per_pack: Math.max(1, Math.round(Number(data.unitsPerPack ?? data.units_per_pack) || 1)),
       sort_order: max + 1,
       active: true
     };
@@ -34,8 +39,17 @@ const items = {
       category: str(data.category).trim() || old.category,
       name: str(data.name).trim() || old.name,
       unit: str(data.unit).trim() || old.unit,
+      base_unit: data.baseUnit === undefined && data.base_unit === undefined
+        ? old.base_unit
+        : (str(data.baseUnit ?? data.base_unit).trim() || old.base_unit),
       minimum: data.minimum === undefined ? old.minimum : num(data.minimum),
       price: data.price === undefined ? old.price : num(data.price),
+      purchase_price: (data.purchasePrice === undefined && data.purchase_price === undefined) ? old.purchase_price : num(data.purchasePrice ?? data.purchase_price),
+      utility_price: (data.utilityPrice === undefined && data.utility_price === undefined) ? old.utility_price : num(data.utilityPrice ?? data.utility_price),
+      conversions: data.conversions === undefined ? old.conversions : normalizeConversions(data.conversions),
+      units_per_pack: data.unitsPerPack === undefined && data.units_per_pack === undefined
+        ? old.units_per_pack
+        : Math.max(1, Math.round(Number(data.unitsPerPack ?? data.units_per_pack) || 1)),
       updated_at: new Date().toISOString(),
     };
     await knex("inventory_items").where({ id }).update(next);
@@ -44,8 +58,10 @@ const items = {
         category: old.category,
         name: old.name,
         unit: old.unit,
+        base_unit: old.base_unit,
         minimum: old.minimum,
-        price: old.price
+        price: old.price,
+        conversions: old.conversions
       }, newValue: next });
     return { ok: true };
   },
@@ -57,6 +73,23 @@ const items = {
     return { ok: true };
   },
 };
+
+
+function normalizeConversions(value) {
+  if (!value) return null;
+  try {
+    let arr;
+    if (typeof value === "string") {
+      try { arr = JSON.parse(value); } catch {
+        arr = value.split(/[;,]/).map((part) => { const [from, factor] = part.split("="); return { from, factor }; });
+      }
+    } else arr = value;
+    if (!Array.isArray(arr)) return null;
+    const clean = arr.map((x) => ({ from: String(x.from || "").trim().toLowerCase(), factor: Number(x.factor) }))
+      .filter((x) => x.from && Number.isFinite(x.factor) && x.factor > 0 && x.factor <= 100000);
+    return clean.length ? JSON.stringify(clean) : null;
+  } catch { return null; }
+}
 
 // ---------------- Chopp ----------------
 const chopp = {
@@ -140,8 +173,21 @@ const reports = {
   },
   async consumption(knex, buildState) {
     const s = await buildState(knex);
-    return s.items.filter((i) => i.base != null && i.count != null && i.count < i.base)
-      .map((i) => ({ ...i, consumed: i.base - i.count })).sort((a, b) => b.consumed - a.consumed);
+    // entradas desde o último fechamento entram na conta: base + entradas − atual
+    const { entriesSince } = require("./purchases");
+    const desde = s.settings && s.settings.lastClosedAt ? s.settings.lastClosedAt : null;
+    const entradas = await entriesSince(knex, desde ? String(desde) : null);
+    return s.items
+      .map((i) => {
+        if (i.base == null || i.count == null) return null;
+        const entrou = entradas.get(Number(i.id)) || 0;
+        const disponivel = i.base + entrou;
+        const consumed = disponivel - i.count;
+        const inconsistent = consumed < 0;
+        return { ...i, entered: entrou, available: disponivel, consumed: inconsistent ? 0 : consumed, inconsistent };
+      })
+      .filter(Boolean)
+      .sort((a, b) => (b.inconsistent - a.inconsistent) || (b.consumed - a.consumed));
   },
   async choppCritical(knex, buildState) {
     const s = await buildState(knex);

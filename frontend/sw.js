@@ -1,5 +1,9 @@
-const CACHE_NAME = "estoque-bar-pwa-v4";
-const ASSETS = ["./","./index.html","./styles.css","./app.js","./api.js","./manifest.webmanifest","./icon-192.png","./icon-512.png"];
+// O nome do cache carrega a versão do app: cada release invalida automaticamente
+// os assets antigos (o handler de "activate" apaga qualquer cache com nome diferente).
+// Ao subir a versão em app.js/package.json, atualize também esta constante.
+const CACHE_NAME = "estoque-bar-pwa-2.5.2";
+const ASSETS = ["./","./index.html","./styles.css","./app.js","./api.js","./manifest.webmanifest","./logo-mrhoppy.png",
+  "./icon-192.png","./icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));

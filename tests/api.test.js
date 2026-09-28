@@ -9,6 +9,7 @@ beforeEach(async () => {
   knex = await makeDb();
   await users.create(knex, { data: { username: "admin", name: "Admin", password: "admin-123", role: "ADMIN" }, userId: null });
   await users.create(knex, { data: { username: "op", name: "Op", password: "op-123", role: "OPERATOR" }, userId: null });
+  await users.create(knex, { data: { username: "mng", name: "Mng", password: "mng-123", role: "MANAGER" }, userId: null });
   server = createServer(knex);
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
@@ -34,7 +35,7 @@ describe("API HTTP + RBAC", () => {
     expect(res.status).toBe(200);
     expect(cookie).toContain("sid=");
     const state = await fetch(`${base}/api/state`, { headers: { cookie } }).then((r) => r.json());
-    expect(state.items.length).toBe(143);
+    expect(state.items.length).toBe(144);
   });
 
   it("OPERATOR NÃO consegue criar item (403)", async () => {
@@ -46,14 +47,20 @@ describe("API HTTP + RBAC", () => {
     expect(res.status).toBe(403);
   });
 
-  it("OPERATOR consegue contar (permitido)", async () => {
+  it("OPERATOR não consegue alterar contagem de estoque (403)", async () => {
     const { cookie } = await login("op", "op-123");
     const id = (await knex("inventory_items").first()).id;
     const res = await fetch(`${base}/api/count`, {
       method: "POST", headers: { "Content-Type": "application/json", cookie },
       body: JSON.stringify({ itemId: id, quantity: 5 }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
+  });
+
+  it("OPERATOR não acessa relatórios de gestão (403)", async () => {
+    const { cookie } = await login("op", "op-123");
+    const res = await fetch(`${base}/api/reports/dashboard`, { headers: { cookie } });
+    expect(res.status).toBe(403);
   });
 
   it("ADMIN consegue criar item (permitido) e gera auditoria", async () => {
@@ -118,6 +125,53 @@ describe("API HTTP + RBAC", () => {
       method: "POST", headers: { "Content-Type": "application/json", cookie },
       body: JSON.stringify({}),
     });
+    expect(res.status).toBe(403);
+  });
+
+  // ---- Fronteira do MANAGER: pode gerir, NÃO pode agir como ADMIN ----
+  it("MANAGER PODE alterar contagem de estoque (200)", async () => {
+    const { cookie } = await login("mng", "mng-123");
+    const id = (await knex("inventory_items").first()).id;
+    const res = await fetch(`${base}/api/count`, {
+      method: "POST", headers: { "Content-Type": "application/json", cookie },
+      body: JSON.stringify({ itemId: id, quantity: 5 }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("MANAGER PODE acessar relatórios de gestão (200)", async () => {
+    const { cookie } = await login("mng", "mng-123");
+    const res = await fetch(`${base}/api/reports/consumption`, { headers: { cookie } });
+    expect(res.status).toBe(200);
+  });
+
+  it("MANAGER NÃO consegue criar item (403) — ação de ADMIN", async () => {
+    const { cookie } = await login("mng", "mng-123");
+    const res = await fetch(`${base}/api/items`, {
+      method: "POST", headers: { "Content-Type": "application/json", cookie },
+      body: JSON.stringify({ category: "TESTE", name: "Item M", unit: "unidade" }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("MANAGER NÃO acessa usuários (403) — ação de ADMIN", async () => {
+    const { cookie } = await login("mng", "mng-123");
+    const res = await fetch(`${base}/api/users`, { headers: { cookie } });
+    expect(res.status).toBe(403);
+  });
+
+  it("MANAGER NÃO consegue resetar o inventário (403) — ação de ADMIN", async () => {
+    const { cookie } = await login("mng", "mng-123");
+    const res = await fetch(`${base}/api/reset`, {
+      method: "POST", headers: { "Content-Type": "application/json", cookie },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("MANAGER NÃO consegue fazer backup (403) — ação de ADMIN", async () => {
+    const { cookie } = await login("mng", "mng-123");
+    const res = await fetch(`${base}/api/backup`, { headers: { cookie } });
     expect(res.status).toBe(403);
   });
 

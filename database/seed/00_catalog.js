@@ -28,6 +28,7 @@ exports.seed = async function (knex) {
       category,
       name,
       unit: unit || "unidade",
+      base_unit: unit || "unidade",
       minimum: minimum === "" ? null : Number(minimum),
       sort_order: ordem,
       active: true,
@@ -38,6 +39,7 @@ exports.seed = async function (knex) {
       // mantém o registro; só garante unidade/mínimo/ordem em sincronia com o catálogo
       await knex("inventory_items").where({ id: existente.id }).update({
         unit: dados.unit,
+        base_unit: dados.base_unit,
         minimum: dados.minimum,
         sort_order: dados.sort_order,
       });

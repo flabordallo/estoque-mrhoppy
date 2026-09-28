@@ -1,78 +1,124 @@
-# Estoque do Bar — v1.13
+# Estoque do Bar — v2.5.2
 
-Atualização v1.12: reset seguro do ciclo atual, proteção contra reenvio de fila offline após reset e melhorias visuais/dinâmicas no dashboard.
+## v2.5.2 — correção do lançamento de compras (mistura de unidades)
 
-**Reset ADMIN:** remove apenas contagens abertas, reinicia torneiras do chopp para 100% e reservas para 0, preservando catálogo, preços, snapshots históricos e auditoria.
+Na v2.5.1 o leitor de compras convertia `pacote → unidade-base × units_per_pack`
+já no lançamento. Como a **contagem do estoque é mantida na unidade de contagem
+do item** (`unit`), somar unidades-base numa contagem em pacotes misturava
+unidades e corrompia o estoque assim que `base_unit ≠ unit` (ex.: contar 5
+pacotes e comprar 3 pacotes resultava em 41 em vez de 8).
 
-# Estoque do Bar — v1.13
+Correção: **a compra entra sempre na unidade de contagem do item, 1:1**. Regras
+explícitas de `conversions` (ex.: `cx=36`) continuam valendo. O `units_per_pack`
+deixa de ser aplicado no lançamento e fica **reservado ao consumo do PDV
+(Fase 3)**, onde a conversão pacote→unidade realmente é usada. A fundação da
+Fase 1 (coluna `base_unit`, `/state` expondo `baseUnit`/`unitsPerPack`, cadastro)
+permanece intacta. Suíte: 103 testes, 103 passando.
 
-Sistema de estoque para bar (celular, tablet, desktop): PWA + backend real com
-banco de dados, login por papéis, auditoria, inventários, relatórios e exportação.
 
-## Status das fases — todas concluídas
-- ✅ **Fase 1** — Fundação: dados portáveis (SQLite dev / PostgreSQL prod), schema, seed do catálogo.
-- ✅ **Fase 2** — Autenticação (usuários, sessões em cookie, papéis ADMIN/MANAGER/OPERATOR, rate-limit) + auditoria.
-- ✅ **Fase 3** — Inventário (contagem, fechamento em snapshot, consumo) + relatórios + frontend ligado à API.
-- ✅ **Fase 4** — Exportação XLSX + backup/restauração + dashboard.
-- ✅ **Fase 5** — Deploy Netlify + documentação + fila offline.
 
-## Rodar localmente (SQLite)
+Sistema real de inventário + PDV para operação do bar.
+
+## v2.3.4 — confiabilidade do PDV e da fronteira de consumo
+
+- **PDV sem venda duplicada em rede instável (P3):** a referência do pedido passa
+  a ser estável por checkout (persistida em `localStorage`). Se a venda for gravada
+  no backend mas a resposta se perder, uma nova tentativa reenvia a **mesma**
+  referência e a idempotência do servidor devolve a venda existente — nunca duplica.
+  A referência só é limpa após sucesso confirmado.
+- **Consumo correto em PostgreSQL:** `entriesSince` normaliza o timestamp de
+  fechamento (string do SQLite ou `Date` do PostgreSQL) em UTC antes de calcular a
+  fronteira do snapshot, corrigindo o cálculo `base + entradas − final` em produção.
+- **Service worker versionado:** `CACHE_NAME` atrelado à versão (`estoque-bar-pwa-2.3.4`),
+  garantindo que cada release invalide os assets antigos.
+- **Cobertura de RBAC do MANAGER** comprovada por testes (permitido em gestão,
+  bloqueado em ações de ADMIN). `npm test`: 78 testes, 78 passando.
+
+## Fase 2 — PDV real
+
+Nesta fase o fluxo deixa de ser demonstração:
+
+1. Operador entra no PDV.
+2. Escolhe categoria e produto.
+3. Configura tamanho/opções/adicionais/observação.
+4. Monta o pedido localmente.
+5. Informa a plaquinha por digitação livre (opcional).
+6. Seleciona o local no mapa do bar.
+7. Confere o total.
+8. Confirma o pagamento.
+9. O backend recalcula os preços a partir do catálogo.
+10. A venda é gravada como `PAID`.
+11. Movimentos de estoque aplicáveis são gravados na mesma transação.
+12. O operador recebe a tela de venda processada e pode iniciar uma nova venda.
+
+### Permissões do operador
+
+`OPERATOR` possui uma interface exclusiva de atendimento. Pode montar e processar vendas e consultar o estoque em modo somente leitura. Não pode alterar contagens, chopp, preços, cadastro, relatórios ou configurações; essas restrições são aplicadas também no backend.
+
+### Forma de pagamento
+
+A forma de pagamento **não é registrada** nesta versão. O sistema registra o valor total processado; a conciliação financeira será feita posteriormente com o total consolidado da noite/fim de semana.
+
+### Plaquinha e localização
+
+Não existe comanda aberta. A plaquinha é somente uma referência operacional do pedido e pode ser digitada livremente. O local é selecionado visualmente no mapa.
+
+### Estoque processado nesta fase
+
+- Chopp: registra litros vendidos por tamanho.
+- Refri / água / suco e doses vinculados ao estoque: baixam 1 unidade por produto vendido.
+- Opções de drinks vinculadas ao estoque: registra 1 unidade por opção selecionada.
+- Lanches e porções: não baixam estoque automaticamente nesta fase, conforme regra definida para o projeto.
+- Adicionais: não possuem baixa automática nesta fase.
+
+### Segurança da venda
+
+O servidor é a autoridade para preço, produto, tamanho, grupos, opções e adicionais. O frontend não pode alterar o preço efetivamente gravado.
+
+Cada venda possui uma referência única para impedir duplicação em caso de retry de rede.
+
+## Desenvolvimento
+
 ```bash
 npm install
-npm run migrate
-npm run seed                 # catálogo + admin (defina ADMIN_PASSWORD no .env)
-node backend/local-server.js # sobe a API em http://localhost:8788/api
-```
-Sirva a pasta `frontend/` (ex.: `npx serve frontend`) e acesse no navegador.
-Recomeçar do zero: `npm run db:reset`.
-
-## Testes
-```bash
 npm test
-```
-Cobrem: migração do catálogo, hash de senha, login, rate-limit, auditoria,
-autorização por papel (OPERATOR bloqueado), contagem, fechamento de inventário,
-cálculo de consumo, exportação XLSX e backup/restauração.
-
-## Papéis
-- **ADMIN** — tudo: catálogo, usuários, auditoria, backup, exportação.
-- **MANAGER** — contagens, chopp, relatórios, exportação; não mexe em usuários/catálogo.
-- **OPERATOR** — só contagem e consulta.
-
-## Arquitetura
-```
-Navegador/PWA → frontend/ (api.js) → /api/* → netlify/functions/api.js
-  → backend/src/router.js (auth + RBAC) → services → Knex → SQLite (dev) / PostgreSQL (prod)
+npm run migrate
+npm run seed
 ```
 
-## Estrutura
-```
-frontend/              PWA (interface preservada + login, estados, offline)
-backend/src/           auth, rbac, audit, router e services (inventory, catalog, export)
-backend/local-server.js  API local p/ dev e testes
-netlify/functions/     API serverless (produção)
-database/migrations/   schema
-database/seed/         catálogo (00) e admin (01)
-database/catalog.js    catálogo canônico extraído do app.js
-tests/                 suíte de testes
-docs/                  DATABASE.md, DEPLOY.md
-```
+O frontend real é servido pelos arquivos de `frontend/` e o backend local por `backend/local-server.js`.
 
-## Deploy
-Veja `docs/DEPLOY.md` (Netlify + PostgreSQL, variáveis de ambiente, migrations).
+## Próxima etapa
 
-## Offline
-O PWA abre offline (shell em cache) e mostra "Offline". Contagens feitas offline
-entram numa **fila** e sincronizam quando a conexão volta. O estado de salvamento
-aparece no topo: Salvo / Salvando… / Offline / Erro ao salvar. A API nunca é
-servida de cache — nada finge estar salvo no servidor sem estar.
+Após validar o fluxo real de venda localmente, a próxima etapa é expandir gestão/relatórios de vendas e, depois, cozinha e regras adicionais de estoque.
 
-## Preços v1.11
-- A aba **Preços** mostra os preços de todos os itens de estoque e chopps.
-- ADMIN pode editar preços; OPERATOR/MANAGER visualizam.
-- O preço dos itens é editável também no cadastro.
-- Alterações de preço são persistidas no banco e registradas na auditoria.
-- A exportação XLSX inclui preço nas abas `ESTOQUE_ATUAL` e `CHOPP`.
 
-## Hospedagem / domínio
-Trocar apenas o domínio não reduz o consumo de build/deploy do Netlify: o projeto continua consumindo os mesmos recursos da conta Netlify. Para reduzir esse consumo, é necessário mover o deploy para outro provedor (ou reduzir a frequência de deploys). O código desta versão continua compatível com o deploy Netlify atual.
+### Cardápio rápido atual
+
+Além de Chopps, Lanches, Porções e Drinks, o PDV possui as categorias `Refri / Água / Suco` e `Doses`. Os preços dessas categorias são definidos em `database/pdv-catalog.js` e entram no banco pelo seed idempotente `database/seed/02_pdv.js`.
+
+O fechamento usa o mapa esquemático do bar, baseado no desenho operacional fornecido, com seleção visual por área e opção `Sem mesa`.
+
+
+## v2.3.3 — Compras e Consumo robustos
+- Leitor conservador: correspondência automática somente com confiança alta e margem segura.
+- Conversões de embalagem/unidade configuráveis no cadastro.
+- Entradas registram quantidade/unidade originais, conversão aplicada, resultado convertido, data operacional e timestamp real.
+- O histórico preserva o fator usado mesmo se a conversão do cadastro mudar depois.
+- Proteção contra relançamento do mesmo texto na mesma data.
+- Consumo exibido pelo frontend vem exclusivamente de `/api/reports/consumption`.
+- Inconsistências de estoque (disponível menor que a contagem final) são explicitadas, não convertidas em consumo negativo.
+- Compras/Entradas e Consumo permanecem módulos separados.
+
+## v2.3.3 — correções de validação local e navegação
+- `npm run dev` agora sobe o servidor local completo (`backend/local-server.js`), servindo frontend e API na mesma origem.
+- Fechamento de contagem passou a ser confirmado diretamente no servidor e recarrega o consumo após sucesso.
+- Conversões também são salvas ao criar um novo item, não apenas ao editar.
+- Categorias do estoque ficam todas visíveis e a categoria selecionada é preservada entre navegações.
+- A tela de Compras foi explicitamente identificada como Leitor de Compras / Entrada de Estoque.
+- O scanner por câmera/OCR de nota fiscal ainda não está implementado nesta versão.
+
+
+## Fase 1 — Modelo híbrido de unidades (v2.5.1)
+
+O estoque separa a unidade operacional/comercial (`unit`) da unidade-base de cálculo e consumo (`base_unit`). Itens existentes são migrados de forma conservadora com `base_unit = unit`; nenhum histórico é recalculado. O leitor pode converter `pacote` automaticamente usando `units_per_pack`. Caixa, fardo e demais embalagens continuam dependendo de regra explícita em `conversions`.

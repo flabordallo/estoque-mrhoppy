@@ -26,3 +26,11 @@ Colunas JSON (`old_value`, `new_value`, `metadata`, `settings.value`) usam
 `database/catalog.js` contém o catálogo extraído **verbatim** do `app.js`
 (143 itens, 13 categorias, 15 chopps). O seed `database/seed/00_catalog.js`
 insere isso de forma **idempotente** (rodar de novo não duplica).
+
+## Fase 1 — Modelo híbrido de unidades (v2.5.1)
+
+`inventory_items.unit` continua representando a unidade operacional/comercial usada na contagem e na interface. `inventory_items.base_unit` representa a unidade interna de cálculo e consumo do PDV.
+
+Itens existentes são migrados conservadoramente com `base_unit = unit`. Nenhum histórico é recalculado.
+
+`units_per_pack` continua representando quantas unidades-base existem em um pacote quando essa relação é conhecida. No leitor de compras, `pacote` pode ser convertido automaticamente para `base_unit` por esse fator. Caixa, fardo e outras embalagens exigem uma regra explícita em `conversions`.

@@ -87,13 +87,13 @@ describe("exportação XLSX", () => {
 describe("backup e restauração", () => {
   it("exporta e restaura mantendo os itens", async () => {
     const dump = await exportAll(knex, null);
-    expect(dump.tables.inventory_items.length).toBe(143);
+    expect(dump.tables.inventory_items.length).toBe(144);
     // apaga um item e restaura
     await knex("inventory_items").where({ name: "Coca lata 350ml" }).del();
     const r = await importAll(knex, dump, null);
     expect(r.ok).toBe(true);
     const total = (await knex("inventory_items").count("* as n"))[0].n;
-    expect(Number(total)).toBe(143);
+    expect(Number(total)).toBe(144);
   });
 });
 
@@ -126,5 +126,18 @@ describe("reset do inventário", () => {
 
     const audit = await knex("audit_log").where({ action: "inventory_reset" });
     expect(audit).toHaveLength(1);
+  });
+});
+
+
+describe("Fase 1 — modelo híbrido de unidades", () => {
+  it("buildState expõe unidade comercial e unidade-base separadamente", async () => {
+    const item = await knex("inventory_items").where({ name: "Coca zero 350ml" }).first();
+    await knex("inventory_items").where({ id: item.id }).update({ unit: "pacote", base_unit: "unidade", units_per_pack: 6 });
+    const state = await inventory.buildState(knex);
+    const out = state.items.find((x) => x.id === String(item.id));
+    expect(out.unit).toBe("pacote");
+    expect(out.baseUnit).toBe("unidade");
+    expect(out.unitsPerPack).toBe(6);
   });
 });

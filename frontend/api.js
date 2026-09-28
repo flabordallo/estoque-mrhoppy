@@ -40,6 +40,17 @@ export const api = {
   async logout() { try { await request("POST", "/logout"); } catch {} },
   async me() { try { return (await request("GET", "/me").then((r) => r.json())).user; } catch { return null; } },
   async getState() { return request("GET", "/state").then((r) => r.json()); },
+  async getPdvCatalog() { return request("GET", "/pdv/catalog").then((r) => r.json()); },
+  async createPdvSale(data) { return request("POST", "/pdv/sales", data).then((r) => r.json()); },
+  async pdvSalesSummary() { return request("GET", "/pdv/sales/summary").then((r) => r.json()); },
+  async pdvSaleDetail(id) { return request("GET", `/pdv/sales/${id}`).then((r) => r.json()); },
+  async previewPurchase(text) { return request("POST", "/purchases/preview", { text }).then((r) => r.json()); },
+  async confirmPurchase(lines, entryDate, sourceText) { return request("POST", "/purchases/confirm", { lines, entryDate, sourceText }).then((r) => r.json()); },
+  async consumption() { return request("GET", "/reports/consumption").then((r) => r.json()); },
+  async recentPurchases() { return request("GET", "/purchases/recent").then((r) => r.json()); },
+  async listSubstitutions() { return request("GET", "/purchases/substitutions").then((r) => r.json()); },
+  async addSubstitution(fromText, inventoryItemId) { return request("POST", "/purchases/substitutions", { fromText, inventoryItemId }).then((r) => r.json()); },
+  async removeSubstitution(id) { return request("DELETE", `/purchases/substitutions/${id}`).then((r) => r.json()); },
   async dashboard() { return request("GET", "/reports/dashboard").then((r) => r.json()); },
   async listUsers() { return request("GET", "/users").then((r) => r.json()); },
   async createUser(data) { return request("POST", "/users", data).then((r) => r.json()); },
@@ -57,13 +68,34 @@ export const api = {
     URL.revokeObjectURL(url);
   },
 
+  // ---- Aba do Dono (ADMIN) ----
+  async ownerSummary() { return request("GET", "/owner/summary").then((r) => r.json()); },
+  async ownerSalesReport(date) { return request("GET", `/owner/sales-report${date ? `?date=${encodeURIComponent(date)}` : ""}`).then((r) => r.json()); },
+  async ownerPurchaseOrder() { return request("GET", "/owner/purchase-order").then((r) => r.json()); },
+  async downloadOwnerXlsx(period = "dia") {
+    const res = await request("GET", `/owner/xlsx?period=${encodeURIComponent(period)}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "relatorio-dono.xlsx"; a.click();
+    URL.revokeObjectURL(url);
+  },
+  async downloadOrderTxt() {
+    const res = await request("GET", "/owner/order-txt");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "pedido-compra.txt"; a.click();
+    URL.revokeObjectURL(url);
+  },
+
   // Mutações passam pela fila (resistem a offline).
   enqueue(op) {
     const q = loadQueue(); q.push(op); saveQueue(q);
     flush();
   },
   setCount(itemId, quantity) { this.enqueue({ method: "POST", path: "/count", body: { itemId, quantity } }); },
-  close() { this.enqueue({ method: "POST", path: "/close", body: {} }); },
+  async close() { return request("POST", "/close", {}).then((r) => r.json()); },
   choppTap(productId, position, level) { this.enqueue({ method: "POST", path: "/chopp/tap", body: { productId, position, level } }); },
   choppReserve(productId, barrels) { this.enqueue({ method: "POST", path: "/chopp/reserve", body: { productId, barrels } }); },
 

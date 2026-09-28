@@ -1,8 +1,0 @@
-node_modules/
-database/dev.sqlite3
-database/*.sqlite3
-.env
-coverage/
-
-# Local Netlify folder
-.netlify

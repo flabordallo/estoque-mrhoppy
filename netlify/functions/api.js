@@ -5,6 +5,7 @@ exports.handler = async (event) => {
   const res = await handleRequest({
     method: event.httpMethod,
     path: event.path,
+    query: event.queryStringParameters || {},
     headers: event.headers || {},
     body: event.body || "",
     ip: (event.headers && event.headers["x-forwarded-for"]) || null,
